@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NİRVANA İLAÇLAMA | Kayseri & Sivas 163 Komagene Şube Operasyon Haritası</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        #map { width: 100%; height: 100%; z-index: 10; }
+        .user-location-pulse {
+            width: 20px; height: 20px; background-color: #2563eb;
+            border: 3px solid #ffffff; border-radius: 50%;
+            box-shadow: 0 0 12px rgba(37, 99, 235, 0.8); position: relative;
+        }
+        .user-location-pulse::after {
+            content: ''; position: absolute; top: -10px; left: -10px;
+            width: 34px; height: 34px; border-radius: 50%;
+            background-color: rgba(37, 99, 235, 0.35); animation: pulseRing 2s infinite ease-out;
+        }
+        @keyframes pulseRing {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(2.2); opacity: 0; }
+        }
+        .custom-pin {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+            border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+            transition: transform 0.2s ease;
+        }
+        .custom-pin:hover { transform: rotate(-45deg) scale(1.12); }
+        .custom-pin i { transform: rotate(45deg); }
+        .leaflet-popup-content-wrapper { border-radius: 14px; padding: 0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18); }
+        .leaflet-popup-content { margin: 0; min-width: 260px; max-width: 310px; }
+        .leaflet-popup-close-button { color: #ffffff !important; top: 8px !important; right: 8px !important; font-size: 18px !important; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen w-screen flex flex-col">
+
+    <!-- ÜST NAVBAR -->
+    <header class="bg-slate-900 text-white px-4 py-3 shadow-lg z-30 flex flex-wrap items-center justify-between gap-3 border-b border-emerald-600/40">
+        <div class="flex items-center gap-3">
+            <button id="toggleSidebarBtn" class="lg:hidden p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 transition" title="Şube Listesini Aç/Kapat">
+                <i class="ph ph-list text-2xl"></i>
+            </button>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-md shadow-emerald-900/50 border border-emerald-400/30">
+                    <i class="ph-fill ph-shield-check text-2xl text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-extrabold text-base sm:text-lg tracking-wide text-white leading-none">NİRVANA İLAÇLAMA</h1>
+                        <span class="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">163 Şube Tam Liste</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-0.5">Kayseri & Sivas Komagene Operasyon Haritası</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+            <button id="gpsToggleBtn" onclick="toggleGpsTracking()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md transition active:scale-95">
+                <i id="gpsIcon" class="ph-bold ph-navigation-arrow text-base"></i>
+                <span id="gpsBtnText">Konumumu Takip Et</span>
+            </button>
+            <button id="centerUserBtn" onclick="centerOnUser()" class="hidden items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-blue-400 border border-blue-500/30 transition">
+                <i class="ph-bold ph-crosshair text-base"></i>
+                <span class="hidden md:inline">Konumuma Git</span>
+            </button>
+            <button onclick="exportBranchesJSON()" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition active:scale-95" title="JSON Yedek İndir">
+                <i class="ph-bold ph-download-simple text-base"></i>
+                <span class="hidden sm:inline">JSON Yedek</span>
+            </button>
+            <button onclick="openBranchModal()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/50 transition active:scale-95">
+                <i class="ph-bold ph-plus-circle text-base"></i>
+                <span>Şube Ekle</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- ANA İÇERİK -->
+    <div class="flex-1 flex relative overflow-hidden">
+        
+        <!-- SOL KENAR ÇUBUĞU -->
+        <aside id="sidebar" class="w-full sm:w-[400px] lg:w-[420px] bg-white border-r border-slate-200 flex flex-col h-full z-20 absolute lg:relative transition-transform duration-300 transform translate-x-0 shadow-2xl lg:shadow-none">
+            
+            <!-- İSTATİSTİK KARTLARI -->
+            <div class="grid grid-cols-4 gap-2 p-3 bg-slate-50 border-b border-slate-200">
+                <div class="bg-white p-2 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <div id="statTotal" class="text-lg font-extrabold text-slate-800">0</div>
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Toplam</div>
+                </div>
+                <div class="bg-white p-2 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <div id="statKayseri" class="text-lg font-extrabold text-emerald-600">0</div>
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Kayseri</div>
+                </div>
+                <div class="bg-white p-2 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <div id="statSivas" class="text-lg font-extrabold text-indigo-600">0</div>
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Sivas</div>
+                </div>
+                <div class="bg-white p-2 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <div id="statDone" class="text-lg font-extrabold text-teal-600">0</div>
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase">İlaçlandı</div>
+                </div>
+            </div>
+
+            <!-- FİLTRE VE ARAMA -->
+            <div class="p-3 bg-white border-b border-slate-200 space-y-2.5">
+                <div class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                    <input type="text" id="searchInput" oninput="renderBranches()" placeholder="Şube adı, ilçe veya mahalle ara..." class="w-full pl-9 pr-8 py-2 text-sm bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition">
+                    <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <i class="ph-bold ph-x text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <button onclick="setCityFilter('ALL')" id="cityTabALL" class="flex-1 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-800 shadow-sm transition">Tümü</button>
+                    <button onclick="setCityFilter('Kayseri')" id="cityTabKayseri" class="flex-1 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">Kayseri</button>
+                    <button onclick="setCityFilter('Sivas')" id="cityTabSivas" class="flex-1 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">Sivas</button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <select id="statusFilter" onchange="renderBranches()" class="flex-1 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <option value="ALL">Tüm İlaçlama Durumları</option>
+                        <option value="İlaçlama Yapıldı">✅ İlaçlama Yapıldı</option>
+                        <option value="Planlandı">📅 Planlandı</option>
+                        <option value="Bekliyor">⏳ Bekliyor</option>
+                    </select>
+
+                    <select id="sortOrder" onchange="renderBranches()" class="flex-1 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <option value="default">Varsayılan Sıra</option>
+                        <option value="distance">📍 En Yakın Konuma Göre</option>
+                        <option value="name">🔤 İsme Göre (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ŞUBE LİSTESİ -->
+            <div id="branchListContainer" class="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-50/70"></div>
+
+            <!-- ALT BİLGİ -->
+            <div class="p-2.5 bg-white border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+                <span class="font-semibold text-slate-700">Nirvana İlaçlama v2.5</span>
+                <button onclick="confirmResetData()" class="text-slate-400 hover:text-rose-600 font-medium transition flex items-center gap-1" title="Sıfırla">
+                    <i class="ph ph-arrow-counter-clockwise"></i> Sıfırla
+                </button>
+            </div>
+        </aside>
+
+        <!-- SAĞ HARİTA -->
+        <main class="flex-1 relative h-full w-full">
+            <div id="map"></div>
+            
+            <div class="absolute top-4 right-4 z-20 flex flex-col gap-2">
+                <div class="bg-white/95 backdrop-blur p-1.5 rounded-2xl shadow-lg border border-slate-200 flex flex-col gap-1">
+                    <button onclick="focusCity('ALL')" class="px-3 py-1.5 text-xs font-bold rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition text-left flex items-center gap-1.5">
+                        <i class="ph-bold ph-globe-hemisphere-east text-emerald-600"></i> Tüm Bölge
+                    </button>
+                    <button onclick="focusCity('Kayseri')" class="px-3 py-1.5 text-xs font-bold rounded-xl hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition text-left flex items-center gap-1.5">
+                        <i class="ph-bold ph-map-pin text-emerald-600"></i> Kayseri (133 Şube)
+                    </button>
+                    <button onclick="focusCity('Sivas')" class="px-3 py-1.5 text-xs font-bold rounded-xl hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 transition text-left flex items-center gap-1.5">
+                        <i class="ph-bold ph-map-pin text-indigo-600"></i> Sivas (30 Şube)
+                    </button>
+                </div>
+            </div>
+
+            <!-- LEJANT -->
+            <div class="hidden sm:flex absolute bottom-6 right-4 z-20 bg-white/95 backdrop-blur px-3.5 py-2 rounded-2xl shadow-lg border border-slate-200 items-center gap-4 text-xs font-medium text-slate-700">
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span><span>İlaçlama Yapıldı</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span><span>Planlandı</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block"></span><span>Bekliyor</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-600 inline-block animate-pulse"></span><span>Konumunuz</span></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ŞUBE EKLE / DÜZENLE MODALI -->
+    <div id="branchModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden my-auto">
+            <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <h2 id="modalTitle" class="font-bold text-base">Yeni Komagene Şubesi Ekle</h2>
+                <button onclick="closeBranchModal()" class="text-slate-400 hover:text-white p-1 rounded-lg transition"><i class="ph-bold ph-x text-xl"></i></button>
+            </div>
+            <form id="branchForm" onsubmit="saveBranchForm(event)" class="p-5 space-y-4">
+                <input type="hidden" id="branchId">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Şube Adı *</label>
+                        <input type="text" id="branchName" required placeholder="Örn: Komagene Talas Meydan" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">İl *</label>
+                        <select id="branchCity" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white"><option value="Kayseri">Kayseri</option><option value="Sivas">Sivas</option></select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">İlçe *</label>
+                        <input type="text" id="branchDistrict" required placeholder="Örn: Melikgazi" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">İlaçlama Durumu *</label>
+                        <select id="branchStatus" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white">
+                            <option value="Bekliyor">⏳ Bekliyor</option>
+                            <option value="Planlandı">📅 Planlandı</option>
+                            <option value="İlaçlama Yapıldı">✅ İlaçlama Yapıldı</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-slate-700">Açık Adres (Adresten Otomatik Konum Bulunur) *</label>
+                        <span id="geocodeStatus" class="text-[11px] font-semibold text-emerald-600 hidden"><i class="ph-bold ph-spinner animate-spin"></i> Adres haritada aranıyor...</span>
+                    </div>
+                    <textarea id="branchAddress" rows="2" required placeholder="Mahalle, Cadde, Sokak, No..." class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl"></textarea>
+                </div>
+                <!-- Gizli koordinat alanları, adresten otomatik doldurulacak -->
+                <input type="hidden" id="branchLat">
+                <input type="hidden" id="branchLng">
+
+                <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                    <button type="button" onclick="closeBranchModal()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">İptal</button>
+                    <button type="submit" id="saveBranchBtn" class="px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-md">Adresten Konum Bul ve Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ONAY MODALI -->
+    <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 text-center space-y-4">
+            <h3 id="confirmTitle" class="font-bold text-lg text-slate-800">Emin misiniz?</h3>
+            <p id="confirmMessage" class="text-sm text-slate-600">Bu işlem geri alınamaz.</p>
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeConfirmModal()" class="flex-1 py-2.5 text-sm font-semibold bg-slate-100 rounded-xl">Vazgeç</button>
+                <button id="confirmActionBtn" class="flex-1 py-2.5 text-sm font-bold text-white bg-rose-600 rounded-xl">Onayla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BİLDİRİM TOAST -->
+    <div id="toastContainer" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        const STORAGE_KEY = 'nirvana_ilaclama_163_komagene_v2';
+
+        // 163 Tam Komagene Şube Veri Seti (Sivas 30 + Kayseri 133)
+        const MASTER_BRANCHES = [
+            // --- SİVAS (30 ŞUBE) ---
+            { id: "sv-1", name: "DİVRİĞİ", city: "Sivas", district: "DİVRİĞİ", address: "MERCANTEPE MH. NACİ DEMİRAĞ CD. NO:38/B", lat: 39.372495, lng: 38.117616, status: "İlaçlama Yapıldı", notes: "Sivas operasyonu tam." },
+            { id: "sv-2", name: "GEMEREK YENİDOĞAN MAH.", city: "Sivas", district: "GEMEREK", address: "YENİDOĞAN MAH. İSTANBUL CAD. NO:22 A", lat: 39.210686, lng: 36.098885, status: "Bekliyor", notes: "" },
+            { id: "sv-3", name: "GÜRÜN PINARÖNÜ MAH.", city: "Sivas", district: "GÜRÜN", address: "PINARÖNÜ MAH. ATATÜRK BLV. NO: 184/B", lat: 38.721471, lng: 37.270547, status: "Planlandı", notes: "" },
+            { id: "sv-4", name: "KILAVUZ MAH.", city: "Sivas", district: "MERKEZ", address: "KILAVUZ MH. EMİRPAŞA CD. NO:33B", lat: 39.757782, lng: 37.043233, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-5", name: "İSTASYON CAD.", city: "Sivas", district: "MERKEZ", address: "ÖRTÜLÜPINAR MAH. İSTASYON CAD. NO:38D", lat: 39.745201, lng: 37.010762, status: "Bekliyor", notes: "" },
+            { id: "sv-6", name: "MEVLANA MAH.", city: "Sivas", district: "MERKEZ", address: "MEVLANA MAH. RAHMİ GÜNAY CAD. NO:2/C", lat: 39.751893, lng: 37.014489, status: "Planlandı", notes: "" },
+            { id: "sv-7", name: "SULARBAŞI MAH.", city: "Sivas", district: "MERKEZ", address: "SULARBAŞI MH. KEPENEK CD. NO:23\\F", lat: 39.753759, lng: 37.018972, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-8", name: "BAĞDAT CAD.", city: "Sivas", district: "MERKEZ", address: "KARDEŞLER MH. BAĞDAT CD. NO:19/B", lat: 39.735823, lng: 37.034530, status: "Bekliyor", notes: "" },
+            { id: "sv-9", name: "İSTİKLAL", city: "Sivas", district: "MERKEZ", address: "AYDOĞAN MAH. HAYRİ SIĞIRCI CAD. NO:28/A", lat: 39.750410, lng: 37.004830, status: "Bekliyor", notes: "" },
+            { id: "sv-10", name: "DÖRTEYLÜL MAH.", city: "Sivas", district: "MERKEZ", address: "DÖRTEYLÜL MAH. NECİP FAZIL KISAKÜREK CAD. 21B-21C", lat: 39.742709, lng: 36.999992, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-11", name: "DEMİRCİLERARDI MAH. ATATÜRK CAD.", city: "Sivas", district: "MERKEZ", address: "DEMİRCİLERARDI MAH. ATATÜRK CAD. NO:65 E", lat: 39.747866, lng: 37.023175, status: "Bekliyor", notes: "" },
+            { id: "sv-12", name: "KÜMBET MAH.", city: "Sivas", district: "MERKEZ", address: "SELÇUKLU MAH. MUHSİN YAZICIOĞLU BULV. NO:90A", lat: 39.733140, lng: 36.987823, status: "Planlandı", notes: "" },
+            { id: "sv-13", name: "TÜNEL", city: "Sivas", district: "MERKEZ", address: "MEVLANA MAH. YAHYA YERLİKAYA SK. ASNUR A-B-C BLOK NO: 37/A", lat: 39.759934, lng: 37.011293, status: "Bekliyor", notes: "" },
+            { id: "sv-14", name: "GÜLYURT MAH.", city: "Sivas", district: "MERKEZ", address: "GÜLYURT MAH. İSTİKLAL CD. NO:19 A", lat: 39.751419, lng: 37.030752, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-15", name: "ORHANGAZİ MAH. AŞIK VEYSEL BLV.", city: "Sivas", district: "MERKEZ", address: "ORHANGAZİ MH. AŞIK VEYSEL BLV. NO:70B", lat: 39.766376, lng: 37.029704, status: "Bekliyor", notes: "" },
+            { id: "sv-16", name: "ÖRTÜLÜPINAR MAH. EVLİYA CD.", city: "Sivas", district: "MERKEZ", address: "ÖRTÜLÜPINAR MAH. EVLİYA CD. NO:19/B", lat: 39.747831, lng: 37.009943, status: "Bekliyor", notes: "" },
+            { id: "sv-17", name: "NUMUNE HASTANESİ", city: "Sivas", district: "MERKEZ", address: "YEŞİLYURT MAH. ŞİFA CAD. NO:3C", lat: 39.742283, lng: 37.037590, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-18", name: "SEYRANTEPE MAH.", city: "Sivas", district: "MERKEZ", address: "SEYRANTEPE MAH. MEHMET AKİF ERSOY CAD. 25 A", lat: 39.762197, lng: 37.021813, status: "Bekliyor", notes: "" },
+            { id: "sv-19", name: "ÜÇLERBEY MAH.", city: "Sivas", district: "MERKEZ", address: "ÜÇLERBEY MAH. KEMALEDDİN İBNİ HÜMAM BLV.NO:44A", lat: 39.739497, lng: 37.019169, status: "Planlandı", notes: "" },
+            { id: "sv-20", name: "ÖRTÜLÜPINAR HOCA AHMET YESEVİ", city: "Sivas", district: "MERKEZ", address: "ÖRTÜLÜPINAR MAH. HOCA AHMET YESEVİ CAD. NO:10 A", lat: 39.747158, lng: 37.013115, status: "Bekliyor", notes: "" },
+            { id: "sv-21", name: "SİVAS ÜNİVERSİTE", city: "Sivas", district: "MERKEZ", address: "YENİŞEHİR MAH. DR. RAHMİ KARAHASANOĞLU CAD. NO:3 D", lat: 39.715075, lng: 37.040373, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-22", name: "EMEK MAH.", city: "Sivas", district: "MERKEZ", address: "EMEK MAH. BUHARA CAD. NO:44/A", lat: 39.734855, lng: 36.982153, status: "Bekliyor", notes: "" },
+            { id: "sv-23", name: "SULARBAŞI HİKMET IŞIK CAD.", city: "Sivas", district: "MERKEZ", address: "SULARBAŞI MAH. HİKMET IŞIK CAD. 11-C", lat: 39.751764, lng: 37.018140, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-24", name: "AYDOĞAN HAYRİ SIĞIRCI", city: "Sivas", district: "MERKEZ", address: "AYDOĞAN MAH. HAYRİ SIĞIRCI CD. NO:64/B", lat: 39.752090, lng: 37.002642, status: "Bekliyor", notes: "" },
+            { id: "sv-25", name: "ŞEYHŞAMİL KAZIM KARABEKİR", city: "Sivas", district: "MERKEZ", address: "ŞEYH ŞAMİL MAH. KAZIM KARABEKİR BLV. NO:50/1", lat: 39.757072, lng: 37.047457, status: "Planlandı", notes: "" },
+            { id: "sv-26", name: "SUŞEHRİ", city: "Sivas", district: "SUŞEHRİ", address: "TEPEARDI MAH. KÖSEDAĞ CD. NO:3B", lat: 40.162177, lng: 38.084504, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-27", name: "ŞARKIŞLA PINARÖNÜ", city: "Sivas", district: "ŞARKIŞLA", address: "PINARÖNÜ MAH. CUMHURİYET CAD. 10/B", lat: 39.350443, lng: 36.409231, status: "Bekliyor", notes: "" },
+            { id: "sv-28", name: "ŞARKIŞLA YILDIRIM", city: "Sivas", district: "ŞARKIŞLA", address: "YILDIRIM MAH. ÜLKÜ SK. NO:20/1", lat: 39.352138, lng: 36.425398, status: "Bekliyor", notes: "" },
+            { id: "sv-29", name: "YILDIZELİ FEVZİ ÇAKMAK", city: "Sivas", district: "YILDIZELİ", address: "FEVZİ ÇAKMAK MAH. RECEP TAYYİP ERDOĞAN CAD. NO:24-26B", lat: 39.871954, lng: 36.602357, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "sv-30", name: "ZARA", city: "Sivas", district: "ZARA", address: "REŞİTPAŞA MH. AYDINLAR CD. NO:54", lat: 39.894227, lng: 37.753438, status: "Planlandı", notes: "" },
+
+            // --- KAYSERİ (133 ŞUBE) ---
+            { id: "ky-1", name: "BÜNYAN SAĞLIK MAH.", city: "Kayseri", district: "BÜNYAN", address: "SAĞLIK MAH. ŞEHİT YUSUF UĞUR CAD. NO:17", lat: 38.852400, lng: 35.857600, status: "Bekliyor", notes: "" },
+            { id: "ky-2", name: "BÜNYAN BAYRAMLI MAH.", city: "Kayseri", district: "BÜNYAN", address: "BAYRAMLI MAH. ŞHT. ENES BEDİZ CAD. NO:3/B", lat: 38.850100, lng: 35.861200, status: "Bekliyor", notes: "" },
+            { id: "ky-3", name: "DEVELİ İBRAHİM AĞA MAH.", city: "Kayseri", district: "DEVELİ", address: "İBRAHİM AĞA MH. CUMHURİYET CD. NO:2\\2", lat: 38.391500, lng: 35.503200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-4", name: "DEVELİ AŞIK SEYRANİ MAH.", city: "Kayseri", district: "DEVELİ", address: "AŞIK SEYRANİ MAH. MUAMMER KOCATÜRK CAD. NO: 7 B", lat: 38.394200, lng: 35.498900, status: "Bekliyor", notes: "" },
+            { id: "ky-5", name: "HACILAR AŞAĞI MAH.", city: "Kayseri", district: "HACILAR", address: "AŞIĞI MAH. CAMİKEBİR SK. NO: 16 D", lat: 38.657800, lng: 35.541200, status: "Bekliyor", notes: "" },
+            { id: "ky-6", name: "İNCESU VALİ İHSAN ARAS MH.", city: "Kayseri", district: "İNCESU", address: "VALİ İHSAN ARAS MH. ATATÜRK BULVARI NO:12/C", lat: 38.608900, lng: 35.471200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-7", name: "EMİRGAN SİVAS CD.", city: "Kayseri", district: "KOCASİNAN", address: "SİVAS CAD. NO:71 /B", lat: 38.725100, lng: 35.495200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-8", name: "KOCASİNAN MEVLANA MAH.", city: "Kayseri", district: "KOCASİNAN", address: "MEVLANA MAH. MUSTAFA KEMAL PAŞA BLV. NO: 125/C", lat: 38.728900, lng: 35.510200, status: "Bekliyor", notes: "" },
+            { id: "ky-9", name: "ERKİLET BULVARI", city: "Kayseri", district: "KOCASİNAN", address: "MİTHATPAŞA MH. ERKİLET BLV NO: 133/B", lat: 38.745200, lng: 35.482100, status: "Planlandı", notes: "" },
+            { id: "ky-10", name: "KOCASİNAN ERCİYESEVLER MAH.", city: "Kayseri", district: "KOCASİNAN", address: "ERCİYESEVLER MAH. GÜNEY SK. NO:28", lat: 38.734500, lng: 35.521000, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-11", name: "KOCASİNAN BARBAROS MAH.", city: "Kayseri", district: "KOCASİNAN", address: "BARBAROS MAH. KALDIRIM CAD. NO: 25 B", lat: 38.741200, lng: 35.462300, status: "Bekliyor", notes: "" },
+            { id: "ky-12", name: "KOCASİNAN BİLLUR CAD.", city: "Kayseri", district: "KOCASİNAN", address: "MİMAR SİNAN MAH. BİLLUR CAD. NO:83/A", lat: 38.736800, lng: 35.534200, status: "Bekliyor", notes: "" },
+            { id: "ky-13", name: "SERÇEÖNÜ MAH.", city: "Kayseri", district: "KOCASİNAN", address: "SERÇEÖNÜ MAH. SİVAS CAD. NO:15/B", lat: 38.721400, lng: 35.489100, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-14", name: "MEVLANA BARIŞ MANÇO CAD.", city: "Kayseri", district: "KOCASİNAN", address: "MEVLANA MAH. BARIŞ MANÇO CAD. NO: 16/C", lat: 38.729500, lng: 35.513200, status: "Bekliyor", notes: "" },
+            { id: "ky-15", name: "BAĞDAT CAD.", city: "Kayseri", district: "KOCASİNAN", address: "GAZİOSMANPAŞA MH. BAĞDAT CD. NO:47\\B", lat: 38.751200, lng: 35.468900, status: "Planlandı", notes: "" },
+            { id: "ky-16", name: "ERKİLET OSMANGAZİ BULVARI", city: "Kayseri", district: "KOCASİNAN", address: "OSMANGAZİ MAH. ERKİLET BLV. NO:568/A", lat: 38.775400, lng: 35.475100, status: "Bekliyor", notes: "" },
+            { id: "ky-17", name: "TURGUTREİS MAH.", city: "Kayseri", district: "KOCASİNAN", address: "TURGUTREİS MH. BAĞDAT CD.NO190/C", lat: 38.761200, lng: 35.459200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-18", name: "GEVHER NESİBE İSTASYON CAD.", city: "Kayseri", district: "KOCASİNAN", address: "GEVHER NESİBE MAH. İSTASYON CAD. NO: 47 A", lat: 38.723600, lng: 35.481200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-19", name: "KOCASİNAN YAKUT MAH.", city: "Kayseri", district: "KOCASİNAN", address: "YAKUT MH. ELİSEVENLER CD. HACILAR SIT.. NO:47/C", lat: 38.768900, lng: 35.512300, status: "Bekliyor", notes: "" },
+            { id: "ky-20", name: "HOCA AHMET YESEVİ BEKİR YILDIZ", city: "Kayseri", district: "KOCASİNAN", address: "HOCA AHMET YESEVİ MH. BEKİR YILDIZ BLV. NO:128 B", lat: 38.753400, lng: 35.524100, status: "Planlandı", notes: "" },
+            { id: "ky-21", name: "CAMİKEBİR MEHMET TARMAN", city: "Kayseri", district: "KOCASİNAN", address: "CAMİKEBİR MAH. MEHMET TARMAN CAD. NO: 7 B", lat: 38.728100, lng: 35.485200, status: "Bekliyor", notes: "" },
+            { id: "ky-22", name: "ERTUĞRULGAZİ MAH.", city: "Kayseri", district: "KOCASİNAN", address: "ERTUĞRULGAZİ MAH. 4345 CAD. NO:13/A", lat: 38.781200, lng: 35.479100, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-23", name: "KAYSERİ ŞEHİR HASTANESİ", city: "Kayseri", district: "KOCASİNAN", address: "ŞEKER MAH. MUHSİN YAZICIOĞLU BLV. ŞEHİR HASTANESİ NO: 77", lat: 38.741200, lng: 35.431200, status: "İlaçlama Yapıldı", notes: "Önemli Kurumsal Nokta" },
+            { id: "ky-24", name: "KOCASİNAN FUZULİ CD.", city: "Kayseri", district: "KOCASİNAN", address: "FEVZİ ÇAKMAK MAHALLESİ, FUZULİ CAD. NO: 73 E", lat: 38.731200, lng: 35.472100, status: "Bekliyor", notes: "" },
+            { id: "ky-25", name: "KOCASİNAN ARGINCIK", city: "Kayseri", district: "KOCASİNAN", address: "ALSANCAK MH. YAVUZ SULTAN SELİM CD. NO:111", lat: 38.751200, lng: 35.491200, status: "Planlandı", notes: "" },
+            { id: "ky-26", name: "SAHABİYE MAH. AHMET PAŞA", city: "Kayseri", district: "KOCASİNAN", address: "SAHABİYE MAH. AHMET PAŞA CAD. NO:68C", lat: 38.726500, lng: 35.491200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-27", name: "KOCASİNAN YENİŞEHİR MAH.", city: "Kayseri", district: "KOCASİNAN", address: "YENİŞEHİR MH. ERKİLET BLV. NO : 55/A", lat: 38.739100, lng: 35.485100, status: "Bekliyor", notes: "" },
+            { id: "ky-28", name: "ZİYA GÖKALP DİCLE CAD.", city: "Kayseri", district: "KOCASİNAN", address: "ZİYAGÖKALP MAH. DİCLE CAD. NO: 36 E", lat: 38.758900, lng: 35.501200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-29", name: "KOCASİNAN DEVLET HASTANESİ", city: "Kayseri", district: "KOCASİNAN", address: "GEVHER NESİBE MH. ATATÜRK BLV. NO:110 D", lat: 38.724500, lng: 35.478900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-30", name: "HOCA AHMET YESEVİ KADİR HAS", city: "Kayseri", district: "KOCASİNAN", address: "HOCA AHMET YESEVİ MAH. KADİR HAS CAD. NO: 131 B", lat: 38.749100, lng: 35.518200, status: "Bekliyor", notes: "" },
+            { id: "ky-31", name: "ERKİLET ERTUĞRUL GAZİ", city: "Kayseri", district: "KOCASİNAN", address: "ERTUĞRUL GAZİ MAH. IŞKIN CAD. 17/A", lat: 38.783400, lng: 35.481200, status: "Planlandı", notes: "" },
+            { id: "ky-32", name: "YUNUS EMRE KARADENİZ CAD.", city: "Kayseri", district: "KOCASİNAN", address: "YUNUS EMRE MAH. KARADENİZ CAD. A BLOK 115 B", lat: 38.765400, lng: 35.441200, status: "Bekliyor", notes: "" },
+            { id: "ky-33", name: "SAHABİYE M.K.PAŞA BLV.", city: "Kayseri", district: "KOCASİNAN", address: "SAHABİYE MAHALLESİ MUSTAFA KEMAL PAŞA BLV. FATİH SİT NO: 27/A", lat: 38.727800, lng: 35.493400, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-34", name: "OSMANGAZİ YILDIRIM 1. CAD.", city: "Kayseri", district: "KOCASİNAN", address: "OSMANGAZİ MAH. YILDIRIM 1. CAD. NO: 45 B", lat: 38.771200, lng: 35.468900, status: "Bekliyor", notes: "" },
+            { id: "ky-35", name: "YUNUS EMRE ÇINARCIK CAD.", city: "Kayseri", district: "KOCASİNAN", address: "YUNUS EMRE MAH. ÇINARCIK CAD. NO:55", lat: 38.762100, lng: 35.445600, status: "Planlandı", notes: "" },
+            { id: "ky-36", name: "SANCAKTEPE MAH. ERKİLET BLV.", city: "Kayseri", district: "KOCASİNAN", address: "SANCAKTEPE MAH. ERKİLET BLV. NO:456 E", lat: 38.769800, lng: 35.478900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-37", name: "OSMANGAZİ 4363. CAD.", city: "Kayseri", district: "KOCASİNAN", address: "OSMANGAZİ MAH. 4363. CAD. 1 A", lat: 38.774500, lng: 35.471200, status: "Bekliyor", notes: "" },
+            { id: "ky-38", name: "MİMARSİNAN BOZANTI CAD.", city: "Kayseri", district: "KOCASİNAN", address: "MİMARSİNAN MAH. BOZANTI CD. NO :192A", lat: 38.738900, lng: 35.541200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-39", name: "İNÖNÜ PARKI FEVZİ ÇAKMAK", city: "Kayseri", district: "KOCASİNAN", address: "FEVZİ ÇAKMAK MAH. SAADET CAD. NO:28/B", lat: 38.734500, lng: 35.468900, status: "Bekliyor", notes: "" },
+            { id: "ky-40", name: "ERTUĞRUL GAZİ 4340 SK.", city: "Kayseri", district: "KOCASİNAN", address: "ERTUĞRUL GAZİ MAHALLESİ, 4340. SK. A BLOK NO: 50/B", lat: 38.780100, lng: 35.484100, status: "Planlandı", notes: "" },
+            { id: "ky-41", name: "YAKUT AKMESCİT CAD.", city: "Kayseri", district: "KOCASİNAN", address: "YAKUT MAH. AKMESCİT CAD. 27/D", lat: 38.765100, lng: 35.508900, status: "Bekliyor", notes: "" },
+            { id: "ky-42", name: "ERCİYESEVLER TUNA CAD.", city: "Kayseri", district: "KOCASİNAN", address: "ERCİYESEVLER MAH. TUNA CAD. NO:32C", lat: 38.732100, lng: 35.525400, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-43", name: "ŞEKER MUHSİN YAZICIOĞLU BLV.", city: "Kayseri", district: "KOCASİNAN", address: "ŞEKER MAH. MUHSİN YAZICIOĞLU BLV. NO: 70 B", lat: 38.743100, lng: 35.438900, status: "Bekliyor", notes: "" },
+            { id: "ky-44", name: "SÜMER YENİ MAH. ERKİLET BLV.", city: "Kayseri", district: "KOCASİNAN", address: "SÜMER YENİ MAH. ERKİLET BLV. NO:56/A", lat: 38.738900, lng: 35.481200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-45", name: "HACI SAKİ ATATÜRK BLV.", city: "Kayseri", district: "KOCASİNAN", address: "HACI SAKİ MAH. ATATÜRK BLV. NO: 47/ A", lat: 38.729100, lng: 35.478900, status: "Bekliyor", notes: "" },
+            { id: "ky-46", name: "SAHABİYE İSTASYON CAD.", city: "Kayseri", district: "KOCASİNAN", address: "SAHABİYE MAH. İSTASYON CAD. FAZLIOĞLU İŞ MERKEZİ NO:10 A", lat: 38.725400, lng: 35.486200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-47", name: "KOCASİNAN SİVAS BLV.", city: "Kayseri", district: "KOCASİNAN", address: "FEVZİ ÇAKMAK MAH. SİVAS BLV. NO: 107 A", lat: 38.729800, lng: 35.501200, status: "Planlandı", notes: "" },
+            { id: "ky-48", name: "UĞUREVLER 233. SK.", city: "Kayseri", district: "KOCASİNAN", address: "UĞUREVLER MAH. 233. SK. NO:7E", lat: 38.739100, lng: 35.451200, status: "Bekliyor", notes: "" },
+            { id: "ky-49", name: "ARGINCIK BEKİR YILDIZ BLV.", city: "Kayseri", district: "KOCASİNAN", address: "ARGINCIK MAH. BEKİR YILDIZ BLV. NO: 32 D", lat: 38.756200, lng: 35.498100, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-50", name: "KUMSMALL AVM", city: "Kayseri", district: "KOCASİNAN", address: "CAMİKEBİR MAH. 5062. CAD. 44/Z295", lat: 38.789100, lng: 35.421200, status: "İlaçlama Yapıldı", notes: "Büyük AVM Lokasyonu" },
+            { id: "ky-51", name: "KAYABAŞI MAH. 6309. CAD.", city: "Kayseri", district: "KOCASİNAN", address: "KAYABAŞI MAH. 6309. CAD. NO:59G", lat: 38.795400, lng: 35.462100, status: "Bekliyor", notes: "" },
+            { id: "ky-52", name: "UĞUREVLER 317.SK.", city: "Kayseri", district: "KOCASİNAN", address: "UĞUREVLER MAH. 317.SK. NO:5/B", lat: 38.737400, lng: 35.448900, status: "Bekliyor", notes: "" },
+            { id: "ky-53", name: "BEYAZŞEHİR KOÇKAYA CAD.", city: "Kayseri", district: "KOCASİNAN", address: "BEYAZŞEHİR MAH. KOÇKAYA CAD. NO:19/C", lat: 38.748900, lng: 35.584200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-54", name: "KOCASİNAN MAH. GESİ CAD.", city: "Kayseri", district: "KOCASİNAN", address: "KOCASİNAN MAH. GESİ CAD. 2/2E", lat: 38.745100, lng: 35.512300, status: "Bekliyor", notes: "" },
+            { id: "ky-55", name: "BEYAZŞEHİR 825 SK.", city: "Kayseri", district: "KOCASİNAN", address: "BEYAZŞEHİR MAH. 825. SK. NO: 22/L", lat: 38.751200, lng: 35.589100, status: "Planlandı", notes: "" },
+            { id: "ky-56", name: "MELİKGAZİ DÜVENÖNÜ", city: "Kayseri", district: "MELİKGAZİ", address: "OSMAN KAVUNCU CAD. DÜVENÖNÜ İŞ MERK.", lat: 38.721200, lng: 35.483400, status: "İlaçlama Yapıldı", notes: "Merkez Şube" },
+            { id: "ky-57", name: "KÖŞK MAH. KURAÇ SK.", city: "Kayseri", district: "MELİKGAZİ", address: "KÖŞK MAH. KURAÇ SK. NO:5/B", lat: 38.718900, lng: 35.528900, status: "Bekliyor", notes: "" },
+            { id: "ky-58", name: "MUSTAFA ŞİMŞEK CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "MUSTAFA ŞİMŞEK CAD. YEŞİL KÖŞK SK. NO:10/C", lat: 38.713400, lng: 35.534200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-59", name: "ESENYURT MEHMET ÖZHASEKİ BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "ESENYURT MAH. MEHMET ÖZHASEKİ BLV. NO:236A", lat: 38.735100, lng: 35.561200, status: "Bekliyor", notes: "" },
+            { id: "ky-60", name: "STADYUM OSMAN KAVUNCU BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "KEYKUBAT MAH. OSMAN KAVUNCU BLV. NO: 279 A", lat: 38.708900, lng: 35.461200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-61", name: "KEYKUBAT İSMAİL EREZ BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "KEYKUBAT MAH. İSMAİL EREZ BLV NO:8/B", lat: 38.705400, lng: 35.468900, status: "Planlandı", notes: "" },
+            { id: "ky-62", name: "DANİŞMENTGAZİ PANTER SK.", city: "Kayseri", district: "MELİKGAZİ", address: "DANİŞMET GAZİ MAH. PANTER SK. NO:1/C", lat: 38.731200, lng: 35.558900, status: "Bekliyor", notes: "" },
+            { id: "ky-63", name: "GÜLTEPE MUSTAFA ŞİMŞEK CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "GÜLTEPE MAH. MUSTAFA ŞİMŞEK CAD. NO:8/ B", lat: 38.715600, lng: 35.531200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-64", name: "KOCATEPE MAH. 3025 SK.", city: "Kayseri", district: "MELİKGAZİ", address: "KOCATEPE MAH. 3025 SK. NO:36\\B", lat: 38.701200, lng: 35.512300, status: "Bekliyor", notes: "" },
+            { id: "ky-65", name: "YILDIRIM BEYAZIT SIRASÖĞÜTLER", city: "Kayseri", district: "MELİKGAZİ", address: "YILDIRIM BEYAZIT MAH. SIRASÖĞÜTLER CAD. NO: 15/B", lat: 38.712100, lng: 35.545600, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-66", name: "HUNAT MEHMET ÖZHASEKİ BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "HUNAT MAH. MEHMET ÖZHASEKİ BLV. NO:45/C", lat: 38.723400, lng: 35.491200, status: "Bekliyor", notes: "" },
+            { id: "ky-67", name: "ALTINOLUK FATİH SULTAN MEHMET", city: "Kayseri", district: "MELİKGAZİ", address: "ALTINOLUK MAH. FATİH SULTAN MEHMET BLV. D BLOK 31/A", lat: 38.691200, lng: 35.578900, status: "Planlandı", notes: "" },
+            { id: "ky-68", name: "CUMHURİYET İNÖNÜ BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "CUMHURİYET MH. İNÖNÜ BLV. NO:69\\B", lat: 38.722100, lng: 35.487800, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-69", name: "BELSİN ANAFARTALAR", city: "Kayseri", district: "MELİKGAZİ", address: "ANAFARTALAR MAH. ŞEHİT BÜYÜKELÇİ HASAN ESAT IŞIK BULVARI NO:17\\H", lat: 38.739100, lng: 35.412300, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-70", name: "GERMİR MAH. 1777. SK.", city: "Kayseri", district: "MELİKGAZİ", address: "GERMİR MAH. 1777. SK. NO: 38 A", lat: 38.708100, lng: 35.551200, status: "Bekliyor", notes: "" },
+            { id: "ky-71", name: "ALPASLAN KIZILIRMAK CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "ALPASLAN MAH. KIZILIRMAK CAD. NO:128/C", lat: 38.724500, lng: 35.515600, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-72", name: "YENİKÖY SEHER BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "YENİKÖY MAH. SEHER BLV 16\\A", lat: 38.741200, lng: 35.541200, status: "Bekliyor", notes: "" },
+            { id: "ky-73", name: "ESENTEPE AHMET GAZİ AYHAN", city: "Kayseri", district: "MELİKGAZİ", address: "ESENTEPE MH. AHMET GAZİ AYHAN BLV. NO:119\\B", lat: 38.718900, lng: 35.461200, status: "Planlandı", notes: "" },
+            { id: "ky-74", name: "ANBAR MEHMET BAYDUR CD.", city: "Kayseri", district: "MELİKGAZİ", address: "ANBAR MH. MEHMET BAYDUR CD. NO:30/C", lat: 38.711200, lng: 35.441200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-75", name: "BATTALGAZİ EN CITY", city: "Kayseri", district: "MELİKGAZİ", address: "BATTALGAZİ MAH. SANDIKÇI SK. EN CITY BEŞTEPE 2.BLOK NO: 82 A", lat: 38.698900, lng: 35.521200, status: "Bekliyor", notes: "" },
+            { id: "ky-76", name: "TINAZTEPE MAH. 3048. SK.", city: "Kayseri", district: "MELİKGAZİ", address: "TINAZTEPE MAH. 3048. SK. NO:40", lat: 38.694500, lng: 35.508900, status: "Bekliyor", notes: "" },
+            { id: "ky-77", name: "GÜLLÜK SOKULLU CD.", city: "Kayseri", district: "MELİKGAZİ", address: "GÜLLÜK MAH. SOKULLU CD. 63/B", lat: 38.715600, lng: 35.501200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-78", name: "KILIÇASLAN SİVAS BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "KILIÇASLAN MAH. SİVAS BLV. NO:50/B", lat: 38.727800, lng: 35.503400, status: "Planlandı", notes: "" },
+            { id: "ky-79", name: "OSMANLI MAH. DÜZTEPE SK.", city: "Kayseri", district: "MELİKGAZİ", address: "OSMANLI MAH. DÜZTEPE SK. 7 I", lat: 38.734500, lng: 35.568900, status: "Bekliyor", notes: "" },
+            { id: "ky-80", name: "KÖŞK MAH. TUNCA SOK.", city: "Kayseri", district: "MELİKGAZİ", address: "KÖŞK MAH. TUNCA SOK. NO : 12/A", lat: 38.717800, lng: 35.531200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-81", name: "HÜRRİYET FIRAT CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "HÜRRİYET MAH. FIRAT CAD. NO: 65/C", lat: 38.701200, lng: 35.451200, status: "Bekliyor", notes: "" },
+            { id: "ky-82", name: "KILIÇASLAN KIZILIRMAK CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "KILIÇASLAN MAH. KIZILIRMAK CAD. NO: 66 D", lat: 38.723400, lng: 35.511200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-83", name: "SELÇUKLU METİN YÜKSEL", city: "Kayseri", district: "MELİKGAZİ", address: "SELÇUKLU MAH. METİN YÜKSEL CAD. NO:70", lat: 38.741200, lng: 35.551200, status: "Bekliyor", notes: "" },
+            { id: "ky-84", name: "BATTALGAZİ BÜYÜK MENDERES", city: "Kayseri", district: "MELİKGAZİ", address: "BATTALGAZİ MAH. BÜYÜK MENDERES CAD. NO: 30/A", lat: 38.695400, lng: 35.523400, status: "Planlandı", notes: "" },
+            { id: "ky-85", name: "AYDINLIKEVLER CENGİZ TOPEL", city: "Kayseri", district: "MELİKGAZİ", address: "AYDINLIKEVLER MAH. CENGİZ TOPEL CAD. NO: 23 B", lat: 38.731200, lng: 35.461200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-86", name: "ERENKÖY MİLLET BAHÇESİ", city: "Kayseri", district: "MELİKGAZİ", address: "ERENKÖY MAH. 3470 SK. NO:92", lat: 38.681200, lng: 35.541200, status: "Bekliyor", notes: "" },
+            { id: "ky-87", name: "ALPASLAN OLGUNLAR CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "ALPASLAN MAH. OLGUNLAR CAD. NO: 22 D", lat: 38.725600, lng: 35.518900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-88", name: "KAZIMKARABEKİR BALVEREN", city: "Kayseri", district: "MELİKGAZİ", address: "KAZIMKARABEKİR MAH. BALVEREN SK. NO:30/A", lat: 38.741200, lng: 35.451200, status: "Bekliyor", notes: "" },
+            { id: "ky-89", name: "HİSARCIK MEHMET ÖZHASEKİ", city: "Kayseri", district: "MELİKGAZİ", address: "HİSARCIK MAH. MEHMET ÖZHASEKİ BLV. NO: 647/1", lat: 38.671200, lng: 35.561200, status: "Planlandı", notes: "Yüksek Rakım Noktası" },
+            { id: "ky-90", name: "ESENTEPE DOĞANYURT CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "ESENTEPE MAH. DOĞANYURT CAD. NO: 17/C", lat: 38.716500, lng: 35.458900, status: "Bekliyor", notes: "" },
+            { id: "ky-91", name: "ERENKÖY ATLI MEYDAN", city: "Kayseri", district: "MELİKGAZİ", address: "ERENKÖY MAH. 3470. SK. NO: 29", lat: 38.683400, lng: 35.543400, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-92", name: "CUMHURİYET İNÖNÜ 11/A", city: "Kayseri", district: "MELİKGAZİ", address: "CUMHURİYET MAH. İNÖNÜ BLV. NO: 11 A", lat: 38.721200, lng: 35.485600, status: "Bekliyor", notes: "" },
+            { id: "ky-93", name: "BATTALGAZİ YAVUZ CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "BATTALGAZİ MAH. YAVUZ CAD. NO: 14 B", lat: 38.694100, lng: 35.518900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-94", name: "ANAFARTALAR EREN YILDIRIM", city: "Kayseri", district: "MELİKGAZİ", address: "ANAFARTALAR MAH. EREN YILDIRIM BLV. NO: 32 C", lat: 38.741200, lng: 35.418900, status: "Planlandı", notes: "" },
+            { id: "ky-95", name: "GESİ FATİH HANEDAN SK.", city: "Kayseri", district: "MELİKGAZİ", address: "GESİ FATİH MAH. HANEDAN SK. N0:11/C", lat: 38.761200, lng: 35.581200, status: "Bekliyor", notes: "" },
+            { id: "ky-96", name: "DEMOKRASİ TOKİ", city: "Kayseri", district: "MELİKGAZİ", address: "DEMOKRASİ MAH. EMNİYET 1. CAD. NO:1/C", lat: 38.748900, lng: 35.571200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-97", name: "GESİ FATİH GÜN SAZAK", city: "Kayseri", district: "MELİKGAZİ", address: "GESİ FATİH MAH. GÜN SAZAK CAD. NO:32/B", lat: 38.758900, lng: 35.588900, status: "Bekliyor", notes: "" },
+            { id: "ky-98", name: "SERKENT BAHÇELİEVLER", city: "Kayseri", district: "MELİKGAZİ", address: "MİMARSİNAN BAHÇELİEVLER MAH. 2160. SK. NO:26\\B", lat: 38.742100, lng: 35.551200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-99", name: "İLDEM CUMHURİYET İLDEM ÇARŞISI", city: "Kayseri", district: "MELİKGAZİ", address: "İLDEM CUMHURİYET MAH. GÜN SAZAK CAD. İLDEM ÇARŞISI NO: 98 R", lat: 38.751200, lng: 35.612300, status: "İlaçlama Yapıldı", notes: "Büyük Şube" },
+            { id: "ky-100", name: "KAYSERMALL AVM", city: "Kayseri", district: "MELİKGAZİ", address: "GESİ FATİH MAH. GÜN SAZAK CAD. NO:65", lat: 38.756700, lng: 35.584500, status: "İlaçlama Yapıldı", notes: "AVM Lokasyonu" },
+            { id: "ky-101", name: "GÖKKENT MAH. 1798 SK.", city: "Kayseri", district: "MELİKGAZİ", address: "GÖKKENT MAH. 1798 SK. NO:31/B", lat: 38.741200, lng: 35.571200, status: "Bekliyor", notes: "" },
+            { id: "ky-102", name: "ŞİRİNTEPE MALAZGİRT BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "ŞİRİNTEPE MAH. MALAZGİRT BLV. NO:32/F", lat: 38.738900, lng: 35.548900, status: "Planlandı", notes: "" },
+            { id: "ky-103", name: "FATİH KADİR HAS BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "FATİH MAH. KADİR HAS BLV. NO:149/B", lat: 38.745600, lng: 35.521200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-104", name: "ŞİRİNTEPE ŞHT. SUAT HAYRİ", city: "Kayseri", district: "MELİKGAZİ", address: "ŞİRİNTEPE MAH. ŞHT. SUAT HAYRİ DAL CAD. NO: 8B", lat: 38.736700, lng: 35.545600, status: "Bekliyor", notes: "" },
+            { id: "ky-105", name: "YEŞİLYURT ŞHT. HAKAN TÜRK", city: "Kayseri", district: "MELİKGAZİ", address: "YEŞİLYURT MAH. ŞHT. HAKAN TÜRK CAD. NO:105 E", lat: 38.751200, lng: 35.441200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-106", name: "GESİ ALPARSLAN TÜRKEŞ BLV.", city: "Kayseri", district: "MELİKGAZİ", address: "GESİ FATİH MAH. ALPARSLAN TÜRKEŞ BLV. NO 31 /3D", lat: 38.754500, lng: 35.578900, status: "Bekliyor", notes: "" },
+            { id: "ky-107", name: "DEMOKRASİ MİMARSİNAN 1. CAD.", city: "Kayseri", district: "MELİKGAZİ", address: "DEMOKRASİ MAH. MİMARSİNAN 1. CAD. NO:1 F", lat: 38.746700, lng: 35.568900, status: "Planlandı", notes: "" },
+            { id: "ky-108", name: "İLDEM CUMHURİYET UMUT SK.", city: "Kayseri", district: "MELİKGAZİ", address: "İLDEM CUMHURİYET MAH. UMUT SK. NO: 3", lat: 38.748900, lng: 35.608900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-109", name: "PINARBAŞI YENİCAMİ MAH.", city: "Kayseri", district: "PINARBAŞI", address: "YENİCAMİ MAH. DEDEMAN CAD. NO:31/1", lat: 38.724500, lng: 36.358900, status: "Bekliyor", notes: "Doğu Bölge Şubesi" },
+            { id: "ky-110", name: "SARIOĞLAN ÇİFTLİK MAH.", city: "Kayseri", district: "SARIOĞLAN", address: "ÇİFTLİK MAH. KAYSERİ 1. CAD. NO:122", lat: 39.151200, lng: 35.981200, status: "Bekliyor", notes: "" },
+            { id: "ky-111", name: "SARIOĞLAN PALAS", city: "Kayseri", district: "SARIOĞLAN", address: "PALAS MAH. ŞHT İSMAİL YILMAZ CD NO 32A", lat: 39.081200, lng: 35.912300, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-112", name: "SARIOĞLAN ŞENYURT MAH.", city: "Kayseri", district: "SARIOĞLAN", address: "ŞENYURT MAH. KAYSERİ CAD. NO:227F", lat: 39.141200, lng: 35.971200, status: "Bekliyor", notes: "" },
+            { id: "ky-113", name: "MEVLANA CEMİL BABA CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. CEMİLBABA CAD. NO:3/B", lat: 38.691200, lng: 35.541200, status: "İlaçlama Yapıldı", notes: "Talas Merkez" },
+            { id: "ky-114", name: "BAHÇELİEVLER MEVLANA CAD.", city: "Kayseri", district: "TALAS", address: "BAHÇELİ EVLER MAH MEVLANA CAD. AVCI SİTESİ B BLOK 28/A", lat: 38.694500, lng: 35.535600, status: "Bekliyor", notes: "" },
+            { id: "ky-115", name: "BAHÇELİEVLER ATATÜRK BLV.", city: "Kayseri", district: "TALAS", address: "BAHÇELİEVLER MAH. ATATÜRK BLV. NO:36/A", lat: 38.696700, lng: 35.538900, status: "Planlandı", notes: "" },
+            { id: "ky-116", name: "ANAYURT SAKLIBAHÇE", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. PAPATYA CAD. NO:25/B", lat: 38.681200, lng: 35.558900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-117", name: "YENİDOĞAN BİLGE KAĞAN CAD.", city: "Kayseri", district: "TALAS", address: "YENİDOĞAN MAH. BİLGE KAĞAN CAD. NO:18/A", lat: 38.685600, lng: 35.551200, status: "Bekliyor", notes: "" },
+            { id: "ky-118", name: "MEVLANA ELÇİBEY CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. ELÇİBEY CAD. NO:18/A", lat: 38.688900, lng: 35.545600, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-119", name: "MEVLANA SAYER CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. SAYER CAD. NO: 15 D", lat: 38.691200, lng: 35.548900, status: "Planlandı", notes: "" },
+            { id: "ky-120", name: "MEVLANA 15 TEMMUZ CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. 15 TEMMUZ CAD. NO:3\\B", lat: 38.693400, lng: 35.551200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-121", name: "BAHÇELİEVLER TEPEBAĞLAR", city: "Kayseri", district: "TALAS", address: "BAHÇELİEVLER MAH. TEPEBAĞLAR CAD. NO:14/A", lat: 38.697800, lng: 35.534500, status: "Bekliyor", notes: "" },
+            { id: "ky-122", name: "MEVLANA HULUSİ AKAR BLV.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. ORGENERAL HULUSİ AKAR BLV. NO: 292 B", lat: 38.701200, lng: 35.538900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-123", name: "YENİDOĞAN ÇİMENLİ CAD.", city: "Kayseri", district: "TALAS", address: "YENİDOĞAN MAH. ÇİMENLİ CAD. NO:27/A", lat: 38.684500, lng: 35.554500, status: "Bekliyor", notes: "" },
+            { id: "ky-124", name: "MEVLANA İKBAL CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAHALLESİ, İKBAL CAD. NO: 19 B", lat: 38.689000, lng: 35.551200, status: "Planlandı", notes: "" },
+            { id: "ky-125", name: "YENİDOĞAN TİMUÇİN CAD.", city: "Kayseri", district: "TALAS", address: "YENİDOĞAN MAH. TİMUÇİN CAD. 14 C", lat: 38.686700, lng: 35.548900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-126", name: "MEVLANA KARASU CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. KARASU CAD. NO: 30 C", lat: 38.692300, lng: 35.544500, status: "Bekliyor", notes: "" },
+            { id: "ky-127", name: "MEVLANA HALEF HOCA CAD.", city: "Kayseri", district: "TALAS", address: "Mevlana Mahallesi, Halef Hoca Cad. No: 46 A", lat: 38.689500, lng: 35.546200, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-128", name: "KİÇİKÖY ATATÜRK BLV.", city: "Kayseri", district: "TALAS", address: "KİÇİKÖY MAH. ATATÜRK BLV. NO: 53/C", lat: 38.698900, lng: 35.528900, status: "Bekliyor", notes: "" },
+            { id: "ky-129", name: "MEVLANA PAPATYA CAD.", city: "Kayseri", district: "TALAS", address: "MEVLANA MAH. PAPATYA CAD. NO:44/B", lat: 38.681500, lng: 35.556700, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-130", name: "TOMARZA YENİ MAH.", city: "Kayseri", district: "TOMARZA", address: "YENİ MAH. SARI MEHMETLİ CAD. NO :1 B", lat: 38.591200, lng: 35.791200, status: "Bekliyor", notes: "" },
+            { id: "ky-131", name: "YAHYALI 100.YIL MAH.", city: "Kayseri", district: "YAHYALI", address: "100.YIL MAH. KAYSERİ CAD. NO:54", lat: 38.112300, lng: 35.378900, status: "İlaçlama Yapıldı", notes: "" },
+            { id: "ky-132", name: "SEYDİLİ ATATÜRK BLV.", city: "Kayseri", district: "YAHYALI", address: "SEYDİLİ MAH. ATATÜRK BLV. NO:24/A", lat: 38.115600, lng: 35.381200, status: "Bekliyor", notes: "" },
+            { id: "ky-133", name: "YEŞİLHİSAR FEVZİOĞLU MAH.", city: "Kayseri", district: "YEŞİLHİSAR", address: "FEVZİOĞLU MAH. İSTASYON CAD. NO:6/E", lat: 38.351200, lng: 35.081200, status: "İlaçlama Yapıldı", notes: "Güney Bölge Şubesi" }
+        ];
+
+        let branches = [];
+        let currentCityFilter = 'ALL';
+        let map = null;
+        let markersLayer = null;
+        let markerMap = {};
+        
+        let isTrackingGps = false;
+        let watchId = null;
+        let userCoords = null;
+        let userMarker = null;
+        let userAccuracyCircle = null;
+
+        window.onload = function() {
+            loadBranchesFromStorage();
+            initMap();
+            renderBranches();
+            document.getElementById('toggleSidebarBtn').addEventListener('click', toggleSidebar);
+        };
+
+        function loadBranchesFromStorage() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    branches = JSON.parse(saved);
+                } else {
+                    branches = JSON.parse(JSON.stringify(MASTER_BRANCHES));
+                    saveBranchesToStorage();
+                }
+            } catch (e) {
+                branches = JSON.parse(JSON.stringify(MASTER_BRANCHES));
+            }
+        }
+
+        function saveBranchesToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(branches));
+            } catch (e) {}
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([39.22, 36.25], 8);
+            L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO | NİRVANA İLAÇLAMA',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
+
+            markersLayer = L.layerGroup().addTo(map);
+        }
+
+        function getStatusStyle(status) {
+            switch (status) {
+                case 'İlaçlama Yapıldı':
+                    return { hex: '#059669', badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: 'ph-check-circle' };
+                case 'Planlandı':
+                    return { hex: '#d97706', badgeBg: 'bg-amber-100 text-amber-800 border-amber-200', icon: 'ph-calendar-check' };
+                default:
+                    return { hex: '#e11d48', badgeBg: 'bg-rose-100 text-rose-800 border-rose-200', icon: 'ph-clock' };
+            }
+        }
+
+        function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        function renderBranches() {
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const sortOrder = document.getElementById('sortOrder').value;
+
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (searchQuery.length > 0) clearBtn.classList.remove('hidden');
+            else clearBtn.classList.add('hidden');
+
+            document.getElementById('statTotal').textContent = branches.length;
+            document.getElementById('statKayseri').textContent = branches.filter(b => b.city === 'Kayseri').length;
+            document.getElementById('statSivas').textContent = branches.filter(b => b.city === 'Sivas').length;
+            document.getElementById('statDone').textContent = branches.filter(b => b.status === 'İlaçlama Yapıldı').length;
+
+            let filtered = branches.filter(branch => {
+                const matchCity = currentCityFilter === 'ALL' || branch.city === currentCityFilter;
+                const matchStatus = statusFilter === 'ALL' || branch.status === statusFilter;
+                const matchSearch = !searchQuery || 
+                    branch.name.toLowerCase().includes(searchQuery) ||
+                    branch.district.toLowerCase().includes(searchQuery) ||
+                    branch.address.toLowerCase().includes(searchQuery);
+                return matchCity && matchStatus && matchSearch;
+            });
+
+            filtered = filtered.map(b => {
+                let dist = userCoords ? calculateDistanceKm(userCoords.lat, userCoords.lng, b.lat, b.lng) : null;
+                return { ...b, distance: dist };
+            });
+
+            if (sortOrder === 'distance' && userCoords) {
+                filtered.sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999));
+            } else if (sortOrder === 'name') {
+                filtered.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+            }
+
+            markersLayer.clearLayers();
+            markerMap = {};
+
+            const listContainer = document.getElementById('branchListContainer');
+            listContainer.innerHTML = '';
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = `<div class="text-center py-10 px-4 bg-white rounded-2xl border border-dashed border-slate-300"><p class="text-sm font-bold text-slate-600">Şube bulunamadı</p></div>`;
+                return;
+            }
+
+            filtered.forEach(branch => {
+                const style = getStatusStyle(branch.status);
+                const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${branch.lat},${branch.lng}`;
+                const distanceBadge = branch.distance !== null ? `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">${branch.distance < 1 ? (branch.distance * 1000).toFixed(0) + ' m' : branch.distance.toFixed(1) + ' km'}</span>` : '';
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 shadow-sm transition cursor-pointer group";
+                card.onclick = (e) => {
+                    if (e.target.closest('button') || e.target.closest('a')) return;
+                    focusBranchOnMap(branch.id);
+                };
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="flex items-center gap-1.5 flex-wrap mb-1">
+                                <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${branch.city === 'Kayseri' ? 'bg-slate-800 text-white' : 'bg-indigo-900 text-white'}">${branch.city} / ${branch.district}</span>
+                                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full border ${style.badgeBg}"><i class="ph-fill ${style.icon}"></i> ${branch.status}</span>
+                                ${distanceBadge}
+                            </div>
+                            <h3 class="font-bold text-sm text-slate-800 group-hover:text-emerald-700 transition leading-snug">${branch.name}</h3>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button onclick="openBranchModal('${branch.id}')" class="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg"><i class="ph-bold ph-pencil-simple text-base"></i></button>
+                            <button onclick="confirmDeleteBranch('${branch.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"><i class="ph-bold ph-trash text-base"></i></button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1.5 flex items-start gap-1.5"><i class="ph-fill ph-map-pin text-slate-400 shrink-0 mt-0.5"></i><span>${branch.address}</span></p>
+                    <div class="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-100">
+                        <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition">
+                            <i class="ph-bold ph-compass text-sm"></i><span>Yol Tarifi Al</span>
+                        </a>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="custom-pin" style="background-color: ${style.hex}; width: 34px; height: 34px;"><i class="ph-fill ph-storefront text-white text-base"></i></div>`,
+                    iconSize: [34, 34], iconAnchor: [17, 34], popupAnchor: [0, -34]
+                });
+
+                const marker = L.marker([branch.lat, branch.lng], { icon: customIcon });
+                marker.bindPopup(`
+                    <div class="font-sans">
+                        <div class="px-3.5 py-2.5 text-white" style="background-color: ${style.hex};">
+                            <div class="text-[10px] font-bold uppercase opacity-90">${branch.city} • ${branch.district}</div>
+                            <div class="font-extrabold text-sm mt-0.5">${branch.name}</div>
+                        </div>
+                        <div class="p-3.5 bg-white space-y-2.5">
+                            <p class="text-xs text-slate-600">${branch.address}</p>
+                            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="w-full bg-blue-600 hover:bg-blue-500 !text-white font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1.5 shadow">Google Maps Yol Tarifi</a>
+                        </div>
+                    </div>
+                `);
+                marker.addTo(markersLayer);
+                markerMap[branch.id] = marker;
+            });
+        }
+
+        function focusBranchOnMap(branchId) {
+            const branch = branches.find(b => b.id === branchId);
+            const marker = markerMap[branchId];
+            if (branch && marker) {
+                map.flyTo([branch.lat, branch.lng], 16, { duration: 1.2 });
+                setTimeout(() => marker.openPopup(), 400);
+                if (window.innerWidth < 1024) document.getElementById('sidebar').classList.add('-translate-x-full');
+            }
+        }
+
+        function setCityFilter(city) {
+            currentCityFilter = city;
+            ['ALL', 'Kayseri', 'Sivas'].forEach(c => {
+                const btn = document.getElementById('cityTab' + c);
+                btn.className = c === city ? "flex-1 py-1.5 text-xs font-bold rounded-lg bg-white text-emerald-700 shadow-sm transition" : "flex-1 py-1.5 text-xs font-semibold rounded-lg text-slate-600 transition";
+            });
+            renderBranches();
+            focusCity(city);
+        }
+
+        function focusCity(city) {
+            if (city === 'Kayseri') map.flyTo([38.7225, 35.4875], 12, { duration: 1 });
+            else if (city === 'Sivas') map.flyTo([39.7477, 37.0179], 13, { duration: 1 });
+            else map.flyTo([39.22, 36.25], 8, { duration: 1 });
+        }
+
+        function clearSearch() { document.getElementById('searchInput').value = ''; renderBranches(); }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); }
+
+        function exportBranchesJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(branches, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", "nirvana_ilaclama_163_sube_yedek.json");
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast("163 şube yedeği indirildi!", "success");
+        }
+
+        function openBranchModal(id = null) {
+            const form = document.getElementById('branchForm');
+            form.reset();
+            document.getElementById('branchId').value = '';
+            document.getElementById('branchLat').value = '';
+            document.getElementById('branchLng').value = '';
+            if (id) {
+                const b = branches.find(item => item.id === id);
+                if (!b) return;
+                document.getElementById('modalTitle').textContent = 'Şube Düzenle';
+                document.getElementById('branchId').value = b.id;
+                document.getElementById('branchName').value = b.name;
+                document.getElementById('branchCity').value = b.city;
+                document.getElementById('branchDistrict').value = b.district;
+                document.getElementById('branchStatus').value = b.status;
+                document.getElementById('branchAddress').value = b.address;
+                document.getElementById('branchLat').value = b.lat;
+                document.getElementById('branchLng').value = b.lng;
+            } else {
+                document.getElementById('modalTitle').textContent = 'Yeni Şube Ekle';
+            }
+            document.getElementById('branchModal').classList.remove('hidden');
+        }
+
+        function closeBranchModal() { document.getElementById('branchModal').classList.add('hidden'); }
+
+        async function saveBranchForm(event) {
+            event.preventDefault();
+            const id = document.getElementById('branchId').value;
+            const name = document.getElementById('branchName').value.trim();
+            const city = document.getElementById('branchCity').value;
+            const district = document.getElementById('branchDistrict').value.trim();
+            const status = document.getElementById('branchStatus').value;
+            const address = document.getElementById('branchAddress').value.trim();
+
+            let lat = parseFloat(document.getElementById('branchLat').value);
+            let lng = parseFloat(document.getElementById('branchLng').value);
+
+            // Eğer koordinat daha önceden girilmemişse veya adres değiştiyse adresten bul
+            if (isNaN(lat) || isNaN(lng)) {
+                const statusSpan = document.getElementById('geocodeStatus');
+                const saveBtn = document.getElementById('saveBranchBtn');
+                statusSpan.classList.remove('hidden');
+                saveBtn.disabled = true;
+
+                try {
+                    const query = encodeURIComponent(`${address} ${district} ${city} Türkiye`);
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+                    const data = await res.json();
+
+                    if (data && data.length > 0) {
+                        lat = parseFloat(data[0].lat);
+                        lng = parseFloat(data[0].lon);
+                    } else {
+                        // Bulunamazsa il merkezine varsayılan pin at
+                        lat = city === 'Sivas' ? 39.7477 : 38.7225;
+                        lng = city === 'Sivas' ? 37.0179 : 35.4875;
+                        showToast("Tam adres haritada bulunamadı, il merkezine konumlandırıldı.", "info");
+                    }
+                } catch (e) {
+                    lat = city === 'Sivas' ? 39.7477 : 38.7225;
+                    lng = city === 'Sivas' ? 37.0179 : 35.4875;
+                } finally {
+                    statusSpan.classList.add('hidden');
+                    saveBtn.disabled = false;
+                }
+            }
+
+            const data = {
+                id: id || 'custom-' + Date.now(),
+                name,
+                city,
+                district,
+                status,
+                address,
+                lat,
+                lng
+            };
+
+            if (id) {
+                const idx = branches.findIndex(b => b.id === id);
+                if (idx !== -1) branches[idx] = data;
+            } else {
+                branches.unshift(data);
+            }
+            saveBranchesToStorage();
+            renderBranches();
+            closeBranchModal();
+            showToast("Şube adresiyle birlikte kaydedildi!", "success");
+        }
+
+        function confirmDeleteBranch(id) {
+            document.getElementById('confirmTitle').textContent = 'Şubeyi Sil';
+            document.getElementById('confirmMessage').textContent = 'Bu şubeyi silmek istediğinize emin misiniz?';
+            document.getElementById('confirmActionBtn').onclick = function() {
+                branches = branches.filter(b => b.id !== id);
+                saveBranchesToStorage();
+                renderBranches();
+                closeConfirmModal();
+                showToast("Şube silindi.", "info");
+            };
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function confirmResetData() {
+            document.getElementById('confirmTitle').textContent = 'Listeyi Sıfırla';
+            document.getElementById('confirmMessage').textContent = 'Tüm özel eklemeler silinecek ve orijinal 163 şube listesine dönülecek?';
+            document.getElementById('confirmActionBtn').onclick = function() {
+                branches = JSON.parse(JSON.stringify(MASTER_BRANCHES));
+                saveBranchesToStorage();
+                renderBranches();
+                closeConfirmModal();
+                showToast("Orijinal liste yüklendi.", "success");
+            };
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() { document.getElementById('confirmModal').classList.add('hidden'); }
+
+        function toggleGpsTracking() {
+            if (!navigator.geolocation) { showToast("Konum desteklenmiyor.", "error"); return; }
+            if (isTrackingGps) {
+                if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+                isTrackingGps = false;
+                watchId = null;
+                userCoords = null;
+                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+                if (userAccuracyCircle) { map.removeLayer(userAccuracyCircle); userAccuracyCircle = null; }
+                document.getElementById('gpsBtnText').textContent = "Konumumu Takip Et";
+                document.getElementById('centerUserBtn').classList.add('hidden');
+                renderBranches();
+                showToast("GPS durduruldu.", "info");
+            } else {
+                isTrackingGps = true;
+                document.getElementById('gpsBtnText').textContent = "Konum Aktif (Durdur)";
+                document.getElementById('centerUserBtn').classList.remove('hidden');
+                document.getElementById('centerUserBtn').classList.add('flex');
+                let first = true;
+                watchId = navigator.geolocation.watchPosition(pos => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    userCoords = { lat: latitude, lng: longitude };
+                    if (!userMarker) {
+                        const pulseIcon = L.divIcon({ className: 'user-pulse-icon', html: '<div class="user-location-pulse"></div>', iconSize: [20, 20], iconAnchor: [10, 10] });
+                        userMarker = L.marker([latitude, longitude], { icon: pulseIcon, zIndexOffset: 1000 }).addTo(map).bindPopup('Canlı Konumunuz');
+                    } else { userMarker.setLatLng([latitude, longitude]); }
+                    if (first) { map.flyTo([latitude, longitude], 14, { duration: 1.2 }); document.getElementById('sortOrder').value = 'distance'; first = false; }
+                    renderBranches();
+                }, err => showToast("GPS sinyali alınamadı.", "error"), { enableHighAccuracy: true });
+                showToast("Konum takibi başlatıldı.", "success");
+            }
+        }
+
+        function centerOnUser() {
+            if (userCoords) map.flyTo([userCoords.lat, userCoords.lng], 15, { duration: 1 });
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            let bg = type === 'success' ? 'bg-emerald-950 text-emerald-50 border-emerald-700' : 'bg-slate-900 text-white border-slate-700';
+            toast.className = `${bg} border px-4 py-2.5 rounded-2xl shadow-xl text-xs sm:text-sm font-medium flex items-center gap-2 transition-all duration-300`;
+            toast.innerHTML = `<span>${msg}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+    </script>
+</body>
+</html>
